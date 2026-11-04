@@ -1,0 +1,1029 @@
+# LAB DATA SAINS
+## Software Requirements Specification (SRS) & Technical Architecture
+
+**Nama Sistem:** LAB DATA SAINS  
+**Jenis Aplikasi:** Computer Laboratory Reservation & Access Management System  
+**Versi Dokumen:** 1.1  
+**Status:** Revisi Terkonfirmasi  
+**Zona Waktu:** Asia/Jakarta (WIB)
+
+> **Catatan Revisi v1.1:** Role Admin dihapus, hanya Mahasiswa dan Kepala Lab. Fokus pengembangan tahap pertama adalah web. Hari operasional Senin–Jumat. Login menggunakan NIM dan password. Sesi dapat diakhiri lebih awal (model billing warnet). Database menggunakan PostgreSQL. Infrastruktur lokal. Stack: Laravel Blade + Alpine.js (full-stack monolith). Mahasiswa memilih komputer sendiri. Kepala Lab tidak dapat membatalkan reservasi yang sudah disetujui. Tidak ada durasi minimal reservasi.
+
+---
+
+# 1. Gambaran Umum Proyek
+
+## 1.1 Deskripsi Sistem
+
+LAB DATA SAINS merupakan sistem berbasis web yang digunakan untuk mengelola peminjaman dan akses komputer di laboratorium.
+
+Sistem terdiri dari dua aplikasi utama:
+
+1. **Web Application:** Digunakan mahasiswa untuk mengajukan peminjaman komputer, Kepala Lab untuk menyetujui atau menolak pengajuan dan mengelola sistem.
+2. **Windows Desktop Agent:** Aplikasi yang dipasang pada setiap komputer laboratorium untuk memvalidasi kode akses dan mengatur kapan komputer dapat digunakan.
+
+Sistem dirancang untuk mengelola empat unit komputer laboratorium.
+
+## 1.2 Tujuan Sistem
+
+- Mengelola peminjaman komputer secara terstruktur.
+- Menghindari bentrok jadwal peminjaman.
+- Membatasi durasi dan jumlah peminjaman mahasiswa.
+- Memastikan hanya mahasiswa dengan reservasi yang disetujui dapat menggunakan komputer.
+- Mengontrol akses komputer melalui aplikasi desktop.
+- Mencatat aktivitas penggunaan komputer.
+- Memudahkan Kepala Lab memantau peminjaman dan penggunaan fasilitas.
+
+## 1.3 Ruang Lingkup
+
+Sistem mencakup:
+
+- Autentikasi dan manajemen akun.
+- Manajemen komputer laboratorium.
+- Pengajuan reservasi komputer.
+- Persetujuan dan penolakan reservasi.
+- Pembuatan kode akses acak.
+- Validasi kode akses melalui desktop agent.
+- Pengelolaan sesi penggunaan komputer.
+- Penguncian otomatis setelah waktu peminjaman habis.
+- Notifikasi dan laporan aktivitas.
+
+Sistem tidak mencakup pembayaran, sistem kasir, atau transaksi keuangan.
+
+---
+
+# 2. Aktor dan Hak Akses
+
+Sistem memiliki dua jenis pengguna.
+
+## 2.1 Mahasiswa
+
+Mahasiswa dapat:
+
+- Login ke sistem menggunakan NIM dan password.
+- Melihat daftar komputer.
+- Melihat jadwal ketersediaan komputer.
+- Mengajukan reservasi.
+- Melihat status pengajuan.
+- Melihat kode akses setelah reservasi disetujui.
+- Membatalkan reservasi sebelum check-in.
+- Mengakhiri sesi lebih awal (seperti billing warnet).
+- Melihat riwayat peminjaman.
+- Melihat jumlah kuota penggunaan harian.
+
+Mahasiswa tidak dapat menyetujui reservasi sendiri.
+
+## 2.2 Kepala Lab
+
+Kepala Lab bertugas mengelola persetujuan peminjaman dan operasional sistem.
+
+Hak akses:
+
+- Login ke sistem menggunakan NIM/ID dan password.
+- Melihat seluruh pengajuan reservasi.
+- Melihat jadwal penggunaan komputer.
+- Menyetujui reservasi.
+- Menolak reservasi.
+- Melihat aktivitas penggunaan komputer.
+- Melihat laporan peminjaman.
+- Memantau status komputer.
+- Mengelola akun pengguna (Mahasiswa).
+- Mengelola data komputer.
+- Mengaktifkan atau menonaktifkan komputer.
+
+Hanya Kepala Lab yang memiliki kewenangan persetujuan reservasi dan pengelolaan sistem.
+
+> **Catatan:** Role Admin dihapus. Seluruh fungsi administratif yang diperlukan dikelola oleh Kepala Lab.
+
+---
+
+# 3. Aturan Bisnis (Business Rules)
+
+| ID | Aturan | Ketentuan |
+|---|---|---|
+| BR-001 | Jumlah komputer | Sistem mengelola 4 komputer |
+| BR-002 | Jam operasional | 07.00–16.00 WIB |
+| BR-003 | Hari operasional | Senin–Jumat (Weekday) |
+| BR-004 | Persetujuan | Reservasi harus disetujui Kepala Lab |
+| BR-005 | Durasi maksimal | Maksimal 5 jam per sesi |
+| BR-006 | Durasi minimal | Tidak ada durasi minimal |
+| BR-007 | Kuota harian | Maksimal 2 sesi berhasil per mahasiswa per hari |
+| BR-008 | Pemilihan komputer | Mahasiswa memilih komputer sendiri |
+| BR-009 | Kode akses | Dibuat setelah reservasi disetujui |
+| BR-010 | Kode komputer | Kode terikat pada komputer tertentu |
+| BR-011 | Check-in | Mahasiswa harus check-in maksimal 30 menit setelah waktu mulai |
+| BR-012 | No-show | Reservasi otomatis dibatalkan jika tidak check-in dalam batas waktu |
+| BR-013 | Pembatalan | Reservasi dapat dibatalkan oleh Mahasiswa sebelum check-in |
+| BR-014 | Pembatalan oleh Kepala Lab | Kepala Lab tidak dapat membatalkan reservasi yang sudah disetujui |
+| BR-015 | Penggunaan kuota | Kuota dihitung setelah check-in berhasil |
+| BR-016 | Peringatan | Desktop menampilkan peringatan 10 menit sebelum sesi berakhir |
+| BR-017 | Penguncian | Komputer otomatis terkunci saat waktu berakhir |
+| BR-018 | Akhir sesi awal | Mahasiswa dapat mengakhiri sesi lebih awal seperti billing warnet |
+| BR-019 | Kode sekali pakai | Kode tidak dapat digunakan kembali |
+| BR-020 | Jadwal | Satu komputer tidak boleh memiliki dua sesi yang bertabrakan |
+| BR-021 | Login | Menggunakan NIM dan password |
+| BR-022 | Zona waktu | Seluruh waktu menggunakan Asia/Jakarta |
+
+## 3.1 Ketentuan Kuota
+
+Mahasiswa mendapatkan maksimal dua sesi penggunaan komputer yang berhasil dalam satu hari.
+
+Contoh:
+
+- Reservasi diajukan tetapi belum disetujui: tidak dihitung.
+- Reservasi disetujui tetapi mahasiswa tidak hadir: tidak dihitung.
+- Reservasi dibatalkan sebelum check-in: tidak dihitung.
+- Check-in berhasil: dihitung satu sesi.
+- Sesi selesai: tetap dihitung satu sesi.
+
+Kuota dihitung berdasarkan tanggal check-in di zona waktu Asia/Jakarta.
+
+## 3.2 Ketentuan Waktu
+
+- Hari operasional: Senin–Jumat (Weekday). Sabtu, Minggu, dan hari libur nasional tidak beroperasi.
+- Jam operasional dimulai pukul 07.00.
+- Jam operasional berakhir pukul 16.00.
+- Durasi maksimal satu sesi adalah 5 jam.
+- Sesi tidak boleh melewati jam operasional.
+- Check-in hanya dapat dilakukan dalam rentang waktu yang diizinkan.
+- Check-in yang terlambat tidak memperpanjang waktu selesai reservasi.
+
+Contoh:
+
+Mahasiswa memesan komputer pukul 09.00–12.00.
+
+Jika mahasiswa check-in pukul 09.20, sesi tetap berakhir pukul 12.00.
+
+**Catatan:** Durasi minimal reservasi masih perlu ditetapkan oleh pihak laboratorium.
+
+## 3.3 Ketentuan Pembatalan dan No-show
+
+- Mahasiswa dapat membatalkan reservasi sebelum check-in.
+- Pembatalan sebelum check-in tidak mengurangi kuota.
+- Mahasiswa wajib check-in maksimal 30 menit setelah waktu mulai.
+- Jika melewati batas tersebut, sistem mengubah status reservasi menjadi `CANCELLED_NO_SHOW`.
+- Reservasi no-show tidak mengurangi kuota harian.
+
+## 3.4 Ketentuan Akhir Sesi
+
+- Sistem memberikan peringatan 10 menit sebelum waktu selesai.
+- Ketika waktu berakhir, komputer otomatis kembali ke layar penguncian.
+- Desktop Windows terbuka sepenuhnya selama sesi aktif.
+- **Mahasiswa dapat mengakhiri sesi lebih awal** (model billing warnet): mahasiswa menekan tombol "Selesai" di desktop agent, sesi diakhiri saat itu juga, dan komputer kembali terkunci.
+- Sisi billing: waktu yang dicatat adalah waktu check-in hingga waktu selesai aktual (bukan waktu reservasi).
+- Kuota tetap dihitung satu sesi meskipun diakhiri lebih awal.
+
+---
+
+# 4. Alur Kerja Sistem
+
+## 4.1 Alur Reservasi
+
+1. Mahasiswa login.
+2. Mahasiswa membuka halaman reservasi.
+3. Sistem menampilkan empat komputer dan jadwal ketersediaannya.
+4. Mahasiswa memilih komputer.
+5. Mahasiswa menentukan tanggal, waktu mulai, dan waktu selesai.
+6. Sistem memeriksa:
+   - Jam operasional.
+   - Durasi maksimal.
+   - Ketersediaan komputer.
+   - Kuota mahasiswa.
+   - Bentrok jadwal.
+7. Jika valid, mahasiswa mengirim pengajuan.
+8. Status reservasi menjadi `PENDING_APPROVAL`.
+9. Kepala Lab menerima pengajuan.
+10. Kepala Lab menyetujui atau menolak reservasi.
+
+## 4.2 Alur Persetujuan
+
+Jika disetujui:
+
+1. Status reservasi menjadi `APPROVED`.
+2. Sistem membuat kode akses acak.
+3. Kode dikaitkan dengan reservasi, mahasiswa, dan komputer.
+4. Mahasiswa dapat melihat kode akses.
+5. Kode berlaku sampai batas waktu check-in.
+
+Jika ditolak:
+
+1. Status reservasi menjadi `REJECTED`.
+2. Alasan penolakan dapat disimpan.
+3. Mahasiswa mendapatkan notifikasi.
+
+## 4.3 Alur Check-in Komputer
+
+1. Mahasiswa datang ke komputer yang telah ditentukan.
+2. Desktop agent menampilkan layar penguncian.
+3. Mahasiswa memasukkan kode akses.
+4. Desktop agent mengirim kode dan identitas perangkat ke server.
+5. Server memvalidasi:
+   - Kode benar.
+   - Kode belum digunakan.
+   - Kode belum kedaluwarsa.
+   - Reservasi telah disetujui.
+   - Komputer sesuai dengan reservasi.
+   - Waktu check-in masih diizinkan.
+   - Kuota harian belum habis.
+6. Jika valid, server mengaktifkan sesi.
+7. Desktop agent membuka akses Windows sepenuhnya.
+8. Sistem mencatat waktu check-in.
+9. Kuota mahasiswa bertambah satu sesi.
+
+Jika tidak valid, komputer tetap terkunci dan pesan kesalahan ditampilkan.
+
+## 4.4 Alur Akhir Sesi
+
+1. Sistem memantau waktu sesi.
+2. Sepuluh menit sebelum waktu berakhir, desktop agent menampilkan peringatan.
+3. Ketika waktu berakhir, desktop agent mengunci kembali komputer.
+4. Server memperbarui status sesi menjadi `COMPLETED`.
+5. Sistem menyimpan riwayat penggunaan.
+
+---
+
+# 5. Status Data Sistem
+
+Status reservasi, sesi, kode, dan komputer harus dipisahkan agar pengelolaan lebih konsisten.
+
+## 5.1 Status Reservasi
+
+| Status | Keterangan |
+|---|---|
+| `PENDING_APPROVAL` | Menunggu persetujuan |
+| `APPROVED` | Disetujui |
+| `REJECTED` | Ditolak |
+| `CANCELLED` | Dibatalkan sebelum check-in |
+| `CANCELLED_NO_SHOW` | Dibatalkan karena tidak hadir |
+| `CHECKED_IN` | Mahasiswa berhasil check-in |
+| `COMPLETED` | Sesi selesai |
+| `CANCELLED_BY_ADMIN` | Dibatalkan oleh Admin jika kebijakan ini diaktifkan |
+
+## 5.2 Status Sesi
+
+| Status | Keterangan |
+|---|---|
+| `ACTIVE` | Sesi sedang berjalan |
+| `COMPLETED` | Sesi selesai normal |
+| `INTERRUPTED` | Sesi terputus |
+| `FORCE_ENDED` | Sesi dihentikan secara paksa |
+
+## 5.3 Status Komputer
+
+| Status | Keterangan |
+|---|---|
+| `ONLINE_LOCKED` | Komputer online dan terkunci |
+| `ONLINE_ACTIVE` | Komputer sedang digunakan |
+| `OFFLINE` | Komputer tidak terhubung |
+| `ERROR` | Desktop agent mengalami kesalahan |
+| `MAINTENANCE` | Komputer dalam pemeliharaan |
+
+## 5.4 Status Kode Akses
+
+Status kode dapat ditentukan dari atribut:
+
+- `expires_at`
+- `used_at`
+- `revoked_at`
+
+Kode dianggap tidak valid jika telah kedaluwarsa, digunakan, atau dicabut.
+
+---
+
+# 6. Sistem Kode Akses
+
+## 6.1 Format Kode
+
+Contoh:
+
+`LD-7K9P-X4M2`
+
+Kode dibuat secara acak menggunakan generator kriptografis yang aman.
+
+## 6.2 Ketentuan Kode
+
+- Dibuat setelah reservasi disetujui.
+- Hanya berlaku untuk satu reservasi.
+- Terikat pada satu mahasiswa.
+- Terikat pada satu komputer.
+- Memiliki batas waktu.
+- Hanya dapat digunakan satu kali.
+- Tidak dapat digunakan pada komputer lain.
+- Tidak dapat digunakan setelah check-in berhasil.
+
+## 6.3 Penyimpanan Kode
+
+Server tidak menyimpan kode asli dalam bentuk teks biasa.
+
+Server menyimpan hash kode akses untuk mengurangi risiko kebocoran.
+
+## 6.4 Perlindungan
+
+- Pembatasan percobaan kode.
+- Rate limiting.
+- HTTPS.
+- Validasi identitas perangkat.
+- Pencatatan percobaan akses.
+- Penolakan kode yang sudah digunakan.
+
+---
+
+# 7. Desktop Agent Windows
+
+## 7.1 Fungsi
+
+Desktop agent adalah aplikasi Windows yang dipasang pada setiap komputer laboratorium.
+
+Fungsinya:
+
+- Menampilkan layar penguncian.
+- Menerima kode akses mahasiswa.
+- Berkomunikasi dengan server.
+- Memvalidasi sesi.
+- Membuka akses Windows ketika valid.
+- Menampilkan peringatan waktu.
+- Mengunci komputer saat sesi berakhir.
+- Mengirim heartbeat ke server.
+
+## 7.2 Teknologi
+
+Rekomendasi:
+
+- Bahasa: C#
+- Framework: .NET 10
+- UI: WPF
+- Komunikasi: HTTPS REST API
+- Real-time: WebSocket jika diperlukan
+- Penyimpanan kredensial perangkat: Windows Certificate Store atau DPAPI.
+
+## 7.3 State Machine Desktop Agent
+
+Desktop agent memiliki beberapa kondisi.
+
+| State | Keterangan |
+|---|---|
+| `BOOTING` | Aplikasi baru dijalankan |
+| `CONNECTING` | Menghubungkan ke server |
+| `LOCKED` | Komputer terkunci |
+| `VALIDATING` | Memvalidasi kode |
+| `UNLOCKED` | Desktop Windows terbuka |
+| `WARNING` | Menampilkan peringatan 10 menit |
+| `SESSION_ENDING` | Waktu penggunaan habis |
+| `RELOCKING` | Mengunci kembali komputer |
+| `OFFLINE` | Tidak terhubung ke server |
+| `ERROR` | Terjadi kesalahan |
+
+## 7.4 Diagram State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> BOOTING
+    BOOTING --> CONNECTING
+    CONNECTING --> LOCKED: Server terhubung
+    CONNECTING --> OFFLINE: Koneksi gagal
+
+    LOCKED --> VALIDATING: Kode dimasukkan
+    VALIDATING --> UNLOCKED: Kode valid
+    VALIDATING --> LOCKED: Kode tidak valid
+
+    UNLOCKED --> WARNING: Sisa 10 menit
+    WARNING --> SESSION_ENDING: Waktu habis
+    UNLOCKED --> SESSION_ENDING: Waktu habis
+
+    SESSION_ENDING --> RELOCKING
+    RELOCKING --> LOCKED
+
+    LOCKED --> OFFLINE: Koneksi terputus
+    UNLOCKED --> OFFLINE: Koneksi terputus
+    OFFLINE --> CONNECTING: Koneksi pulih
+
+    BOOTING --> ERROR: Gagal memulai
+    CONNECTING --> ERROR: Kesalahan sistem
+    ERROR --> CONNECTING: Pemulihan
+```
+
+## 7.5 Perilaku Desktop
+
+Saat tidak ada sesi valid:
+
+- Desktop agent menampilkan layar penguncian.
+- Mahasiswa tidak dapat menggunakan komputer melalui sesi laboratorium.
+- Mahasiswa harus memasukkan kode akses.
+
+Saat sesi valid:
+
+- Desktop Windows terbuka sepenuhnya.
+- Mahasiswa dapat menggunakan aplikasi yang tersedia.
+- Desktop agent tetap memantau waktu.
+
+Saat waktu habis:
+
+- Peringatan akhir ditampilkan.
+- Sesi diakhiri.
+- Komputer kembali ke layar penguncian.
+
+## 7.6 Keamanan Windows
+
+Jangan hanya mengandalkan jendela WPF dengan properti `TopMost`.
+
+Untuk implementasi yang lebih kuat, gunakan konfigurasi Windows yang sesuai, seperti:
+
+- Windows Assigned Access atau Shell Launcher jika didukung edisi Windows.
+- Akun mahasiswa dengan hak akses standar.
+- Akun administrator teknisi yang terpisah.
+- Kebijakan pembatasan akses sistem.
+- Mekanisme pemulihan jika desktop agent gagal.
+
+Desktop Windows yang terbuka penuh dan penguncian yang benar-benar tidak dapat dilewati merupakan dua kebutuhan yang perlu diseimbangkan. Pengguna dengan hak administrator lokal tetap dapat mengambil alih perangkat.
+
+Sistem tidak boleh menggunakan mekanisme tersembunyi atau penguncian yang menghalangi pemulihan teknisi.
+
+---
+
+# 8. Arsitektur Teknis
+
+## 8.1 Rekomendasi Teknologi
+
+| Komponen | Teknologi |
+|---|---|
+| Full-stack Web | Laravel 12 (Blade + Alpine.js) |
+| Database | PostgreSQL |
+| Desktop Agent | C# .NET 10 + WPF *(tahap 2)* |
+| API Internal | Laravel REST API |
+| Real-time | WebSocket / Laravel Echo |
+| Background Job | Laravel Queue |
+| Scheduler | Laravel Scheduler |
+| Web Server | Nginx |
+| Sistem Operasi Server | Ubuntu LTS (lokal) |
+
+Arsitektur menggunakan pendekatan **Full-stack Monolith** — satu project Laravel untuk frontend (Blade + Alpine.js) dan backend. Tidak ada project terpisah untuk frontend. Desktop agent dikembangkan pada tahap kedua setelah web selesai.
+
+## 8.2 Diagram Arsitektur
+
+```mermaid
+flowchart TD
+    M[Mahasiswa] --> WEB[Laravel Blade + Alpine.js]
+    K[Kepala Lab] --> WEB
+
+    WEB --> APP[Laravel Application]
+    APP --> DB[(PostgreSQL Database)]
+    APP --> Q[Laravel Queue]
+    APP --> WS[WebSocket / Echo]
+
+    WS -.->|Tahap 2| PC1[Desktop Agent PC-01]
+    WS -.->|Tahap 2| PC2[Desktop Agent PC-02]
+    WS -.->|Tahap 2| PC3[Desktop Agent PC-03]
+    WS -.->|Tahap 2| PC4[Desktop Agent PC-04]
+
+    PC1 -.-> APP
+    PC2 -.-> APP
+    PC3 -.-> APP
+    PC4 -.-> APP
+```
+
+## 8.3 Alur Komunikasi
+
+1. Pengguna berinteraksi dengan React.
+2. React mengirim permintaan ke Laravel API.
+3. Laravel memvalidasi permintaan.
+4. Laravel membaca atau menulis data MySQL.
+5. Laravel mengirim notifikasi atau perintah yang diperlukan.
+6. Desktop agent berkomunikasi dengan Laravel.
+7. Laravel memberikan hasil validasi.
+8. Desktop agent menjalankan perubahan status komputer.
+
+---
+
+# 9. Struktur Database
+
+## 9.1 Daftar Tabel
+
+| Tabel | Fungsi |
+|---|---|
+| `users` | Data pengguna (Mahasiswa & Kepala Lab) |
+| `computers` | Data komputer laboratorium |
+| `reservations` | Data reservasi |
+| `reservation_approvals` | Riwayat persetujuan |
+| `access_codes` | Data kode akses |
+| `attendance_sessions` | Data sesi penggunaan |
+| `computer_devices` | Identitas perangkat desktop agent *(tahap 2)* |
+| `notifications` | Notifikasi pengguna |
+| `activity_logs` | Catatan aktivitas sistem |
+
+## 9.2 Struktur Utama Tabel
+
+### users
+
+- `id`
+- `name`
+- `nim`
+- `email`
+- `password`
+- `role`
+- `is_active`
+- `created_at`
+- `updated_at`
+
+### computers
+
+- `id`
+- `computer_code`
+- `computer_name`
+- `location`
+- `status`
+- `is_active`
+- `created_at`
+- `updated_at`
+
+### reservations
+
+- `id`
+- `user_id`
+- `computer_id`
+- `start_at`
+- `end_at`
+- `status`
+- `purpose`
+- `created_at`
+- `updated_at`
+
+### reservation_approvals
+
+- `id`
+- `reservation_id`
+- `approved_by`
+- `decision`
+- `reason`
+- `created_at`
+
+### access_codes
+
+- `id`
+- `reservation_id`
+- `code_hash`
+- `expires_at`
+- `used_at`
+- `revoked_at`
+- `created_at`
+
+### attendance_sessions
+
+- `id`
+- `reservation_id`
+- `user_id`
+- `computer_id`
+- `check_in_at`
+- `scheduled_end_at`
+- `actual_end_at`
+- `status`
+- `created_at`
+- `updated_at`
+
+### computer_devices
+
+- `id`
+- `computer_id`
+- `device_identifier`
+- `device_credential`
+- `last_heartbeat_at`
+- `agent_version`
+- `status`
+- `created_at`
+- `updated_at`
+
+### notifications
+
+- `id`
+- `user_id`
+- `title`
+- `message`
+- `is_read`
+- `created_at`
+
+### activity_logs
+
+- `id`
+- `user_id`
+- `action`
+- `description`
+- `ip_address`
+- `created_at`
+
+## 9.3 Relasi Database
+
+```mermaid
+erDiagram
+    USERS ||--o{ RESERVATIONS : creates
+    COMPUTERS ||--o{ RESERVATIONS : assigned
+    RESERVATIONS ||--o{ RESERVATION_APPROVALS : has
+    USERS ||--o{ RESERVATION_APPROVALS : decides
+    RESERVATIONS ||--o| ACCESS_CODES : generates
+    RESERVATIONS ||--o| ATTENDANCE_SESSIONS : creates
+    COMPUTERS ||--o{ ATTENDANCE_SESSIONS : used_by
+    COMPUTERS ||--o| COMPUTER_DEVICES : has
+    USERS ||--o{ NOTIFICATIONS : receives
+    USERS ||--o{ ACTIVITY_LOGS : performs
+```
+
+---
+
+# 10. Backend API
+
+Semua endpoint menggunakan prefix `/api`.
+
+## 10.1 Authentication
+
+| Method | Endpoint | Fungsi |
+|---|---|---|
+| POST | `/auth/login` | Login |
+| POST | `/auth/logout` | Logout |
+| GET | `/auth/me` | Profil pengguna |
+
+## 10.2 Computer
+
+| Method | Endpoint | Fungsi |
+|---|---|---|
+| GET | `/computers` | Daftar komputer |
+| GET | `/computers/{id}` | Detail komputer |
+| GET | `/computers/{id}/schedule` | Jadwal komputer |
+| POST | `/computers` | Tambah komputer |
+| PUT | `/computers/{id}` | Edit komputer |
+| DELETE | `/computers/{id}` | Hapus/nonaktifkan komputer |
+
+## 10.3 Reservation
+
+| Method | Endpoint | Fungsi |
+|---|---|---|
+| GET | `/reservations` | Daftar reservasi |
+| POST | `/reservations` | Membuat reservasi |
+| GET | `/reservations/{id}` | Detail reservasi |
+| POST | `/reservations/{id}/approve` | Menyetujui reservasi |
+| POST | `/reservations/{id}/reject` | Menolak reservasi |
+| POST | `/reservations/{id}/cancel` | Membatalkan reservasi |
+| GET | `/student/quota` | Melihat kuota mahasiswa |
+
+## 10.4 Desktop Agent
+
+| Method | Endpoint | Fungsi |
+|---|---|---|
+| POST | `/desktop/check-in` | Validasi kode akses |
+| POST | `/desktop/heartbeat` | Mengirim status perangkat |
+| POST | `/desktop/session/end` | Mengirim akhir sesi |
+| GET | `/desktop/session/current` | Memeriksa sesi aktif |
+
+## 10.5 Reports
+
+| Method | Endpoint | Fungsi |
+|---|---|---|
+| GET | `/reports/reservations` | Laporan reservasi |
+| GET | `/reports/usage` | Laporan penggunaan |
+| GET | `/reports/computers` | Laporan komputer |
+
+Seluruh endpoint harus dilindungi autentikasi dan otorisasi sesuai role.
+
+---
+
+# 11. Background Jobs dan Otomatisasi
+
+Sistem membutuhkan proses otomatis di backend.
+
+| Job | Fungsi |
+|---|---|
+| `CancelNoShowReservations` | Membatalkan reservasi yang tidak di-check-in |
+| `ExpireAccessCodes` | Menonaktifkan kode kedaluwarsa |
+| `NotifySessionEnding` | Mengirim peringatan sebelum sesi berakhir |
+| `EndExpiredSessions` | Mengakhiri sesi yang sudah habis |
+| `CheckDeviceHeartbeat` | Memeriksa koneksi komputer |
+| `GenerateDailyReport` | Membuat laporan harian |
+
+## 11.1 Heartbeat
+
+Setiap desktop agent mengirim heartbeat secara berkala, misalnya setiap 15 detik.
+
+Data yang dikirim:
+
+- Identitas perangkat.
+- Status aplikasi.
+- Status komputer.
+- Sesi aktif.
+- Waktu heartbeat.
+
+Jika heartbeat tidak diterima dalam batas tertentu, status perangkat berubah menjadi `OFFLINE`.
+
+Komputer yang offline tidak boleh menerima check-in baru.
+
+Jika koneksi terputus ketika sesi sedang berjalan, desktop agent dapat menyelesaikan sesi berdasarkan waktu akhir yang telah diverifikasi dan disimpan secara aman. Koneksi yang hilang tidak boleh otomatis memperpanjang sesi.
+
+---
+
+# 12. Validasi Jadwal dan Pencegahan Bentrok
+
+## 12.1 Rumus Bentrok Jadwal
+
+Dua jadwal dianggap bertabrakan jika:
+
+```text
+Start_A < End_B && End_A > Start_B
+```
+
+Contoh:
+
+| Reservasi A | Reservasi B | Hasil |
+|---|---|---|
+| 08.00–10.00 | 09.00–11.00 | Bentrok |
+| 08.00–10.00 | 10.00–12.00 | Tidak bentrok |
+| 08.00–10.00 | 07.00–09.00 | Bentrok |
+| 08.00–10.00 | 10.30–12.00 | Tidak bentrok |
+
+## 12.2 Pencegahan Double Booking
+
+Pemeriksaan bentrok tidak cukup dilakukan di frontend.
+
+Backend harus:
+
+1. Memulai transaksi database.
+2. Mengunci baris komputer yang dipilih menggunakan mekanisme row locking.
+3. Memeriksa jadwal yang sudah disetujui.
+4. Memastikan tidak ada bentrok.
+5. Menyimpan persetujuan dan alokasi komputer.
+6. Melakukan commit transaksi.
+
+Dengan demikian, dua permintaan persetujuan yang masuk bersamaan tidak akan mengalokasikan komputer yang sama pada waktu yang bertabrakan.
+
+## 12.3 Pencegahan Kuota Ganda
+
+Pemeriksaan kuota juga harus dilakukan secara atomik.
+
+Server perlu mengunci data yang relevan untuk mahasiswa dan tanggal check-in, menghitung sesi yang telah berhasil, lalu memutuskan apakah check-in dapat dilanjutkan.
+
+Jangan hanya mengandalkan pemeriksaan kuota di frontend.
+
+---
+
+# 13. Keamanan Sistem
+
+## 13.1 Keamanan Web
+
+- Password di-hash menggunakan algoritma yang sesuai.
+- Menggunakan HTTPS.
+- Menggunakan autentikasi yang aman.
+- Menerapkan role-based access control.
+- Memvalidasi seluruh input.
+- Menerapkan rate limiting.
+- Mencatat aktivitas penting.
+- Membatasi akses database.
+
+## 13.2 Keamanan Desktop Agent
+
+- Setiap komputer memiliki identitas perangkat unik.
+- Kredensial perangkat disimpan secara aman.
+- Server memverifikasi identitas perangkat.
+- Kode akses tidak disimpan sebagai teks biasa.
+- Desktop agent hanya menerima instruksi dari server yang terautentikasi.
+- Aplikasi memiliki mekanisme pemulihan jika terjadi error.
+
+## 13.3 Keamanan Infrastruktur
+
+- Firewall.
+- HTTPS.
+- Backup database harian.
+- Pembatasan akses SSH.
+- Monitoring server.
+- Pembaruan keamanan sistem operasi.
+- Pengelolaan secret melalui konfigurasi lingkungan yang aman.
+
+---
+
+# 14. Penanganan Kondisi Khusus
+
+| Kondisi | Perilaku Sistem |
+|---|---|
+| Kode salah | Komputer tetap terkunci |
+| Kode kedaluwarsa | Check-in ditolak |
+| Kode sudah digunakan | Check-in ditolak |
+| Kode digunakan di PC berbeda | Check-in ditolak |
+| Kuota habis | Check-in ditolak |
+| Komputer offline | Tidak menerima check-in baru |
+| Reservasi no-show | Otomatis dibatalkan |
+| Desktop agent error | Masuk status error dan memerlukan pemulihan |
+| Server terputus saat sesi | Sesi aktif tidak diperpanjang |
+| Dua reservasi bertabrakan | Salah satu pengajuan/persetujuan ditolak |
+| Waktu sesi habis | Komputer kembali terkunci |
+
+---
+
+# 15. Pengujian Sistem
+
+## 15.1 Functional Testing
+
+| ID | Skenario | Hasil yang Diharapkan |
+|---|---|---|
+| TC-01 | Login mahasiswa | Login berhasil |
+| TC-02 | Login Kepala Lab | Login berhasil |
+| TC-03 | Reservasi komputer tersedia | Reservasi dibuat |
+| TC-04 | Reservasi di luar jam operasional | Ditolak |
+| TC-05 | Reservasi lebih dari 5 jam | Ditolak |
+| TC-06 | Reservasi bertabrakan | Ditolak |
+| TC-07 | Kepala Lab menyetujui | Status menjadi APPROVED |
+| TC-08 | Kepala Lab menolak | Status menjadi REJECTED |
+| TC-09 | Kode benar di komputer yang sesuai | Check-in berhasil |
+| TC-10 | Kode salah | Check-in ditolak |
+| TC-11 | Kode dipakai di komputer berbeda | Check-in ditolak |
+| TC-12 | Mahasiswa tidak hadir | Reservasi dibatalkan |
+| TC-13 | Kuota dua sesi telah habis | Check-in ditolak |
+| TC-14 | Mahasiswa membatalkan sebelum check-in | Reservasi dibatalkan |
+| TC-15 | Sisa waktu 10 menit | Peringatan tampil |
+| TC-16 | Waktu sesi habis | Komputer terkunci |
+| TC-17 | Komputer kehilangan koneksi | Status offline |
+| TC-18 | Desktop agent dijalankan ulang | Status dipulihkan dengan aman |
+| TC-19 | Dua check-in bersamaan | Kuota tidak terlampaui |
+| TC-20 | Dua persetujuan jadwal bersamaan | Tidak terjadi double booking |
+
+## 15.2 Non-Functional Testing
+
+- Keamanan autentikasi.
+- Kecepatan respons API.
+- Konsistensi database.
+- Ketahanan koneksi.
+- Pemulihan desktop agent.
+- Pengujian beban sederhana.
+- Pengujian backup dan restore.
+
+---
+
+# 16. Deployment dan Infrastruktur
+
+## 16.1 Rekomendasi Server Awal
+
+Untuk sistem dengan empat komputer, spesifikasi awal berikut dapat menjadi acuan:
+
+| Komponen | Rekomendasi |
+|---|---|
+| CPU | 2 vCPU |
+| RAM | 4 GB |
+| Storage | 40 GB NVMe |
+| OS | Ubuntu LTS |
+| Database | MySQL |
+| Web Server | Nginx |
+| SSL | HTTPS |
+| Backup | Harian |
+
+Spesifikasi ini merupakan titik awal, bukan jaminan kapasitas final. Kebutuhan aktual perlu diuji berdasarkan trafik dan konfigurasi.
+
+## 16.2 Infrastruktur yang Dipilih
+
+**✅ Local Server (Terpilih)**
+
+- Backend Laravel dan database PostgreSQL berada di jaringan lokal laboratorium.
+- Desktop agent berkomunikasi melalui LAN.
+- Mengurangi ketergantungan pada internet.
+- Cocok untuk skala laboratorium kecil (4 komputer).
+- Dapat dimigrasikan ke cloud di masa mendatang jika diperlukan.
+
+**Catatan:** VPS/Cloud dan Hybrid dapat dipertimbangkan pada fase pengembangan berikutnya jika akses dari luar jaringan kampus dibutuhkan.
+
+---
+
+# 17. Struktur Folder Proyek
+
+## 17.1 Full-stack Laravel (Satu Folder)
+
+Frontend dan backend berada dalam satu project Laravel. Blade digunakan untuk templating, Alpine.js untuk interaktivitas client-side.
+
+```text
+lab-data-sains/
+├── app/
+│   ├── Http/
+│   │   ├── Controllers/
+│   │   │   ├── AuthController.php
+│   │   │   ├── ReservationController.php
+│   │   │   ├── ApprovalController.php
+│   │   │   ├── ComputerController.php
+│   │   │   ├── DesktopController.php
+│   │   │   └── ReportController.php
+│   │   └── Middleware/
+│   ├── Models/
+│   ├── Services/
+│   │   ├── ReservationService.php
+│   │   ├── AccessCodeService.php
+│   │   ├── CheckInService.php
+│   │   └── SessionService.php
+│   ├── Jobs/
+│   └── Console/
+├── database/
+│   ├── migrations/
+│   └── seeders/
+├── resources/
+│   ├── views/                  ← Blade templates (frontend)
+│   │   ├── layouts/
+│   │   ├── auth/
+│   │   ├── mahasiswa/
+│   │   ├── kepala-lab/
+│   │   └── components/
+│   ├── css/
+│   └── js/                     ← Alpine.js components
+├── routes/
+│   ├── web.php                 ← Web routes (Blade)
+│   └── api.php                 ← API routes (Desktop Agent - tahap 2)
+├── public/
+└── tests/
+```
+
+## 17.2 Desktop Agent WPF *(Tahap 2)*
+
+```text
+lab-data-sains-desktop/
+├── Views/
+│   ├── LockScreen.xaml
+│   ├── SessionScreen.xaml
+│   └── ErrorScreen.xaml
+├── ViewModels/
+├── Services/
+│   ├── ApiService.cs
+│   ├── DeviceIdentityService.cs
+│   ├── SessionService.cs
+│   ├── HeartbeatService.cs
+│   └── LockService.cs
+├── Models/
+├── Configuration/
+└── App.xaml
+```
+
+---
+
+# 18. Roadmap Pengembangan
+
+Pengembangan disarankan dilakukan secara bertahap.
+
+| Sprint | Fokus | Hasil |
+|---|---|---|
+| Sprint 1 | Foundation | Setup proyek, database, autentikasi, role |
+| Sprint 2 | Reservation Engine | Jadwal, pengajuan, validasi bentrok |
+| Sprint 3 | Approval | Dashboard Kepala Lab, persetujuan, kode akses |
+| Sprint 4 | Desktop Agent | Aplikasi WPF, layar penguncian, validasi kode |
+| Sprint 5 | Session Management | Heartbeat, peringatan, auto-lock, kuota |
+| Sprint 6 | Testing & Deployment | Pengujian, keamanan, instalasi, dokumentasi |
+
+## Prioritas Pengembangan
+
+Urutan pengerjaan yang disarankan:
+
+1. Backend dan database.
+2. Sistem autentikasi dan role.
+3. Pengelolaan komputer.
+4. Sistem reservasi.
+5. Sistem persetujuan.
+6. Sistem kode akses.
+7. Desktop agent.
+8. Integrasi desktop dan backend.
+9. Pengelolaan sesi.
+10. Pengujian dan deployment.
+
+---
+
+# 19. Keputusan yang Masih Perlu Dikonfirmasi
+
+Bagian ini memisahkan keputusan yang sudah ditentukan dari hal-hal yang masih membutuhkan persetujuan pihak laboratorium.
+
+| No. | Pertanyaan | Status |
+|---|---|---|
+| 1 | Hari operasional: Senin–Jumat, Senin–Sabtu, atau setiap hari? | ✅ **Senin–Jumat (Weekday)** |
+| 2 | Login mahasiswa menggunakan NIM dan password, email kampus, atau SSO? | ✅ **NIM dan password** |
+| 3 | Jika mahasiswa selesai lebih awal, apakah sesi boleh diakhiri lebih awal? | ✅ **Ya, model billing warnet** |
+| 4 | Server menggunakan VPS, local server, atau hybrid? | ✅ **Local Server** |
+| 5 | Sistem operasi komputer menggunakan Windows 10/11 atau Windows 11 saja? | ⏳ Belum ditentukan |
+| 6 | Apakah reservasi memiliki durasi minimal? | ✅ **Tidak ada durasi minimal** |
+| 7 | Apakah mahasiswa memilih komputer sendiri atau sistem menentukan komputer? | ✅ **Mahasiswa memilih sendiri** |
+| 8 | Apakah Kepala Lab boleh membatalkan reservasi yang telah disetujui? | ✅ **Tidak boleh** |
+| 9 | Bagaimana prosedur teknisi ketika desktop agent mengalami kegagalan? | ⏳ Perlu ditentukan (tahap 2) |
+
+---
+
+# 20. Kesimpulan
+
+LAB DATA SAINS dirancang sebagai sistem pengelolaan peminjaman komputer laboratorium yang mengintegrasikan aplikasi web full-stack dengan aplikasi desktop Windows (tahap 2).
+
+Sistem ini memiliki dua aktor utama, yaitu Mahasiswa dan Kepala Lab. Mahasiswa mengajukan reservasi, Kepala Lab memberikan persetujuan dan mengelola operasional sistem.
+
+Setelah reservasi disetujui, mahasiswa memperoleh kode akses acak yang terikat pada komputer tertentu. Kode tersebut digunakan melalui desktop agent untuk membuka akses Windows. Selama sesi berlangsung, desktop agent memantau waktu penggunaan dan mengunci kembali komputer ketika waktu berakhir. Mahasiswa dapat mengakhiri sesi lebih awal seperti sistem billing warnet.
+
+Dengan arsitektur Laravel Blade + Alpine.js, PostgreSQL, dan C# WPF (tahap 2), sistem dibangun sebagai aplikasi monolith yang sederhana, mudah dipelihara, dan dapat dikembangkan lebih lanjut.
+
+**Prinsip utama sistem:**
+
+- Reservasi harus disetujui Kepala Lab.
+- Satu komputer tidak boleh memiliki jadwal yang bertabrakan.
+- Mahasiswa maksimal menggunakan dua sesi berhasil per hari.
+- Hari operasional Senin–Jumat, jam 07.00–16.00 WIB.
+- Durasi maksimal satu sesi adalah lima jam.
+- Login menggunakan NIM dan password.
+- Kode akses hanya berlaku untuk satu reservasi dan satu komputer.
+- Komputer terbuka sepenuhnya selama sesi aktif.
+- Mahasiswa dapat mengakhiri sesi lebih awal (model billing warnet).
+- Komputer otomatis terkunci ketika waktu peminjaman berakhir.
+
+**Tahap Pengembangan:**
+- **Tahap 1 (Sekarang):** Web application full-stack dengan Laravel Blade + Alpine.js, database PostgreSQL, infrastruktur lokal.
+- **Tahap 2 (Berikutnya):** Desktop Agent C# WPF untuk validasi kode akses dan penguncian komputer.
+
+Dokumen ini menjadi dasar analisis, desain database, pengembangan web, desktop agent, pengujian, dan deployment LAB DATA SAINS.
